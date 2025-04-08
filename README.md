@@ -10,5 +10,9 @@ STM32F3 Discovery embedded board - E02 revision.
 - USB A to USB Mini-B cable
 - Minicom or other serial terminal tool for UART output (Linux)
 
+### License
+The generated STM32 Cube code is licensed under BSD 3-Clause and so is any code I wrote by hand.
+
 ### Contact
-Devlog posted on my X [here](https://x.com/Keian_Kaserman)
+Devlog posted on my X [here](https://x.com/Keian_Kaserman)  
+
