@@ -26,7 +26,18 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef enum {
+	CONFIG = 0x20,
+	X = 0x28,
+	Y = 0x2A,
+	Z = 0x2C
+} Accel_Reg;
 
+typedef struct {
+	int16_t X;
+	int16_t Y;
+	int16_t Z;
+} AccelCoordinates;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -51,7 +62,8 @@ UART_HandleTypeDef huart1;
 PCD_HandleTypeDef hpcd_USB_FS;
 
 /* USER CODE BEGIN PV */
-int16_t accel_data;
+Accel_Reg coords[3] = {X, Y, Z};
+AccelCoordinates accel_data;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -65,7 +77,7 @@ static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void Configure_Accel(void);
 void Verify_Accel_Config(void);
-void Read_Accel_Data(void);
+void Read_Accel_Data(Accel_Reg reg, AccelCoordinates *ac);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -453,11 +465,11 @@ void Verify_Accel_Config(void)
 	HAL_I2C_Master_Receive(&hi2c1, addr, buf, size, timeout); /* overwrites the contents of buffer with the config byte */
 }
 
-void Read_Accel_Data(void)
+void Read_Accel_Data(Accel_Reg reg, AccelCoordinates *ac)
 {
 	/* target the X axis data registers LSM303DLHC accel */
 	uint16_t addr = 0x19 << 1; /* must shl 1 bit to make room for transmit/receive bit */
-	uint8_t reg_offset = 0x28 | 0x80; /* assert MSB to tell sensor multi-byte */
+	uint8_t reg_offset = (uint8_t)reg | 0x80; /* assert MSB to tell sensor multi-byte */
 	uint16_t size = 2; /* in bytes */
 	uint8_t buf[size];
 	buf[0] = reg_offset;
@@ -465,21 +477,38 @@ void Read_Accel_Data(void)
 	HAL_I2C_Master_Transmit(&hi2c1, addr, buf, 1, timeout); /* only need to send register addr in transmit */
 	/* read from the X axis data registers */
 	HAL_I2C_Master_Receive(&hi2c1, addr, buf, size, timeout); /* overwrites the contents of buffer with the config byte */
-	accel_data = (int16_t)(buf[1] << 8);
-	accel_data |= (int16_t)(buf[0]);
+
+	/* write out accel coordinate value */
+	int16_t temp = (int16_t)(buf[1] << 8);
+	temp |= (int16_t)(buf[0]);
+	switch (reg)
+	{
+	case X:
+		ac->X = temp;
+		break;
+	case Y:
+		ac->Y = temp;
+		break;
+	case Z:
+		ac->Z = temp;
+		break;
+	}
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if (htim->Instance == TIM2)
 	{
-		Read_Accel_Data();
+		/* capture all 3 coordinates */
+		for (int i = 0; i < (sizeof(coords) / sizeof(coords[0])); i++)
+			Read_Accel_Data(coords[i], &accel_data);
+
 		/* transmit accel data via Virtual COM connected via ST-Link */
 		uint32_t timeout = 100;
-		uint16_t size = 11;
-		char outstr[size];
-		sprintf(outstr, "X=%d\r\n", accel_data);
-		HAL_UART_Transmit(&huart1, (const uint8_t *)outstr, size, timeout);
+		uint16_t max_chars = 8+9+9+3; /* "X=" is 2 chars, %d is printing a max of '-' and 5 digits (16 bit signed int) */
+		char outstr[max_chars];
+		sprintf(outstr, "X=%d Y=%d Z=%d\r\n", accel_data.X, accel_data.Y, accel_data.Z);
+		HAL_UART_Transmit(&huart1, (const uint8_t *)outstr, max_chars, timeout);
 //		HAL_GPIO_TogglePin(GPIOE, BLUE_LED_Pin);
 	}
 }
